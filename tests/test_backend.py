@@ -97,6 +97,14 @@ class TestDecodeOutput:
         result = _decode_output(data)
         assert "caf" in result
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="ANSI codepage is Windows-only")
+    def test_gbk_ansi_codepage(self):
+        # es.exe emits non-ASCII paths in the ANSI codepage (GBK/cp936 on
+        # Chinese Windows).  Must decode via mbcs, not getpreferredencoding,
+        # which lies under PYTHONUTF8=1 / UTF-8 mode (see _decode_output).
+        data = "被测服务-TypeNet模型.md".encode("mbcs")
+        assert _decode_output(data) == "被测服务-TypeNet模型.md"
+
     def test_empty(self):
         assert _decode_output(b"") == ""
 

@@ -875,15 +875,28 @@ def human_size(size: int) -> str:
 
 
 def _decode_output(data: bytes) -> str:
-    """Decode subprocess output, trying UTF-8 first then system encoding."""
+    """Decode subprocess output, trying UTF-8 first then the ANSI codepage.
+
+    es.exe writes non-ASCII paths in the system ANSI codepage (e.g. GBK/cp936
+    on Chinese Windows).  ``locale.getpreferredencoding()`` lies under
+    ``PYTHONUTF8=1`` / Python UTF-8 mode -- it reports ``utf-8`` while es.exe
+    still emits ANSI bytes, so GBK text fell through to UTF-8 with
+    ``errors="replace"`` and came out as mojibake.  The ``mbcs`` codec always
+    maps to the ANSI codepage on Windows, regardless of UTF-8 mode.
+    """
     if data.startswith(b"\xef\xbb\xbf"):
         return data[3:].decode("utf-8", errors="replace")
     try:
         return data.decode("utf-8")
     except UnicodeDecodeError:
         pass
-    encoding = locale.getpreferredencoding(False)
-    try:
-        return data.decode(encoding)
-    except (UnicodeDecodeError, LookupError):
-        return data.decode("utf-8", errors="replace")
+    candidates: list[str] = []
+    if sys.platform == "win32":
+        candidates.append("mbcs")  # ANSI codepage (ACP), immune to UTF-8 mode
+    candidates.append(locale.getpreferredencoding(False))
+    for encoding in candidates:
+        try:
+            return data.decode(encoding)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return data.decode("utf-8", errors="replace")
